@@ -1,35 +1,16 @@
+import colors
+import conditions
+import config
+
 import requests
 import os
+import math
 
 os.system("cls")
 
-#----- CONFIGURATION 
-class Colors:
-    ERROR = "\033[38;2;255;0;0m"         # Error color
-    RESET = "\033[0m"                    # Default text color
-    PERFECT = "\033[38;2;0;255;0m"       # The color that should be used when a map is perfect to your liking (full message color)
-    GOOD_SR = "\033[38;2;255;255;0m"     # The color that should be used when a map has a good star rating
-    GOOD_LENGTH = "\033[38;2;0;255;255m" # The color that should be used when a map's length is good
-    GOOD_RP0 = "\033[38;2;255;0;255m"    # The color that should be used when a map awards good RP on normal speed
-    GOOD_RP4 = "\033[38;2;0;0;255m"      # The color that should be used when a map awards good RP on normal speed++++ (1.45x)
-
-class Conditions:
-    star_rating = staticmethod(lambda sr: 3.72 < sr < 4.6)
-    length_0 = staticmethod(lambda length: length < 62)
-    length_4 = staticmethod(lambda length: length < 93)
-    rp_0 = staticmethod(lambda rp: rp > 85)
-    rp_4 = staticmethod(lambda rp: rp > 118)
-    perfect_0 = staticmethod(lambda rp, length: rp > 85 and length < 60)
-    perfect_4 = staticmethod(lambda rp, length: rp > 118 and length < 90)
-
-class Config: 
-    SPACE_MAPS = True       # Enable if you want to have an empty line between each map in the console  
-    STARTING_ID = 4197      # The Map ID to begin gathering information from. Note that ID 4197 is the 1st map, not ID 1
-    ACCURACY = 1            # The accuracy to calculate the RP for (0-1)
-    DISPLAY_BAD = False     # Whether or not you'd like to print the info of maps that do not match any of your desired conditions.
-    DISPLAY_PARTIAL = True # Whether or not you'd like to print the info of maps that match a part of your desired conditions.
-    DISPLAY_PERFECT = True  # Whether or not you'd like to print the info of maps that match the perfect condition.
-#----- CONFIGURATION
+Conditions = conditions.Conditions
+Colors = colors.Colors
+Config = config.Config
 
 URL = "https://development.rhythia.com/api/getBeatmapPage"
 
@@ -41,20 +22,20 @@ HEADERS = {
 }
 
 #----- RP CALC 
-def k(i):
-    if 100 - 12 * i < 5:
-        return 5
-    else:
-        return 100 - 12 * i
-    
-def f(x, s):
-    return 2 ** (k(s) * x - k(s))
-    
-def p(s, a):
-    return ((((s * f(a, s) * 100) / 2) ** 2) / 1000) * 2
 
-def calculate_rp(s, a, m):
-    return p(s * m, a)
+def ease_in_expo_deq_hard(acc: float, star: float):
+	exponent = 100 - 12 * star
+	exponent = max(exponent, 5)
+	return 0 if acc == 0 else math.pow(2, exponent * acc - exponent)
+
+def calculate_rp(star: float, acc: float, speed: float):
+    star *= speed
+    eased_rp = (star * ease_in_expo_deq_hard(acc, star) * 100)
+    final_rp = math.pow(eased_rp / 2, 2) / 1000
+
+    rounded_rp = round(final_rp, 2)
+    return rounded_rp * 2
+
 #----- RP CALC 
 
 #----- HELPERS 
@@ -106,6 +87,7 @@ def main():
 
     while success:
         response = requests.post(URL, json=create_payload(current_id), headers=HEADERS)
+        # print(response.json())5
         try:
             response.raise_for_status()
             data = response.json()
