@@ -2,6 +2,7 @@ import json
 import os
 
 default_settings = {
+    "user_id": 0,
     "space_maps": True,
     "starting_id": 4197,
     "accuracy": 100,
@@ -20,6 +21,7 @@ with open(file_path, "r") as file:
     settings_json = json.load(file)
 
 class Config:
+    USER_ID = settings_json["user_id"]
     SPACE_MAPS = settings_json["space_maps"]           # Enable if you want to have an empty line between each map in the console
     STARTING_ID = settings_json["starting_id"]         # The Map ID to begin gathering information from. Note that ID 4197 is the 1st map, not ID 1
     ACCURACY = settings_json["accuracy"] / 100         # The accuracy to calculate the RP for (0-100)

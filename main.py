@@ -6,13 +6,17 @@ import requests
 import os
 import math
 
+import random
+
 os.system("cls")
 
 Conditions = conditions.Conditions
 Colors = colors.Colors
 Config = config.Config
 
-URL = "https://development.rhythia.com/api/getBeatmapPage"
+BEATMAP_PAGE_URL = "https://development.rhythia.com/api/getBeatmaps"
+BEATMAP_PAGE_ID_URL = "https://development.rhythia.com/api/getBeatmapPageById" # for top plays
+USER_SCORES_URL = "https://development.rhythia.com/api/getUserScores"
 
 NEWLINE = "\n"
 
@@ -21,7 +25,7 @@ HEADERS = {
     "User-Agent": "MapList/1.0 (UID=10151)"
 }
 
-#----- RP CALC 
+#----- RP CALC
 
 def ease_in_expo_deq_hard(acc: float, star: float):
 	exponent = 100 - 12 * star
@@ -36,9 +40,10 @@ def calculate_rp(star: float, acc: float, speed: float):
     rounded_rp = round(final_rp, 2)
     return rounded_rp * 2
 
-#----- RP CALC 
+#----- RP CALC
 
-#----- HELPERS 
+#----- HELPERS
+
 def format_time(seconds):
     hours = seconds // 3600
     minutes = (seconds % 3600) // 60
@@ -48,14 +53,23 @@ def format_time(seconds):
         return f"{hours}:{minutes:02}:{seconds:02}"
     else:
         return f"{minutes}:{seconds:02}"
-    
-def create_payload(map_id: int):
-    return {"id": map_id, "session": "N/A1"}
-#----- HELPERS 
+
+def create_scores_payload(user_id: int):
+    return {"id": user_id, "session": "N/A1"}
+
+def create_map_payload(map_id: str):
+    return {"mapId": map_id, "session":"N/A1"}
+
+def create_map_page_payload(min_stars: float, max_stars: float):
+    return {"minStars": min_stars, "maxStars": max_stars, "status": "APPROVED", "session": "N/A1"}
+    # there isnt enough ranked maps, so for now i will only be using legacy maps
+
+#----- HELPERS
+
 
 def process_map(beatmap):
     length = max(1, beatmap['length'] / 1000)
-    nps = beatmap['noteCount'] / length
+    # nps = beatmap['noteCount'] / length
     sr = beatmap['starRating']
     normal_rp = calculate_rp(sr, Config.ACCURACY, 1)
     speed4_rp = calculate_rp(sr, Config.ACCURACY, 1.45)
@@ -69,34 +83,63 @@ def process_map(beatmap):
     if is_perfect and Config.DISPLAY_PERFECT:
         print(f"{Colors.PERFECT}{beatmap['title']} | RP (1x): {normal_rp:.2f}, "
               f"RP (1.45x): {speed4_rp:.2f} | Length: {format_time(round(length))} | "
-              f"Note Count: {beatmap['noteCount']} ({nps:.2f} NPS) | Star Rating: {sr:.2f}*{Colors.RESET}{NEWLINE if Config.SPACE_MAPS else ''}")
+              f"Star Rating: {sr:.2f}*{Colors.RESET}{NEWLINE if Config.SPACE_MAPS else ''}")
     elif is_partial and Config.DISPLAY_PARTIAL:
         print(f"{Colors.RESET}{beatmap['title']} | "
               f"{Colors.GOOD_RP0 if Conditions.rp_0(normal_rp) else Colors.RESET}RP (1x): {normal_rp:.2f}{Colors.RESET}, "
               f"{Colors.GOOD_RP4 if Conditions.rp_4(speed4_rp) else Colors.RESET}RP (1.45x): {speed4_rp:.2f}{Colors.RESET} | "
               f"{Colors.GOOD_LENGTH if Conditions.length_0(length) else Colors.RESET}Length: {format_time(round(length))}{Colors.RESET} | "
-              f"Note Count: {beatmap['noteCount']} ({nps:.2f} NPS) | "
               f"{Colors.GOOD_SR if Conditions.star_rating(sr) else Colors.RESET}Star Rating: {sr:.2f}*{Colors.RESET}{NEWLINE if Config.SPACE_MAPS else ''}")
     elif not is_partial and Config.DISPLAY_BAD:
         print(f"{Colors.RESET}{beatmap['title']} | RP (1x): {normal_rp:.2f}, RP (1.45x): {speed4_rp:.2f} | "
-              f"Length: {format_time(round(length))} | Note Count: {beatmap['noteCount']} ({nps:.2f} NPS) | Star Rating: {sr:.2f}*{Colors.RESET}{NEWLINE if Config.SPACE_MAPS else ''}")
+              f"Length: {format_time(round(length))} | Star Rating: {sr:.2f}*{Colors.RESET}{NEWLINE if Config.SPACE_MAPS else ''}")
+
+def process_scores():
+    scores_response = requests.post(USER_SCORES_URL, json=create_scores_payload(Config.USER_ID))
+    data = scores_response.json()
+    top_plays = data["top"]
+
+    sr_list = []
+
+    for i in top_plays:
+        # beatmap_payload = {"session":"","mapId":i["songId"]}
+        map_response = requests.post(BEATMAP_PAGE_ID_URL, json=create_map_payload(i["songId"]))
+
+        map_data = map_response.json()["beatmap"]
+        map_sr = map_data["starRating"]
+
+        sr_list.append(map_sr)
+
+    sr_list = sorted(sr_list, reverse=True)
+
+    min_sr = sr_list[-1]
+    max_sr = sr_list[0]
+
+    return min_sr, max_sr
 
 def main():
+    min_sr, max_sr = process_scores()
+
     success = True
-    current_id = Config.STARTING_ID
+    map_index = 0 # will go up to 5
+
+    # print(str(min_sr) + " " + str(max_sr))
 
     while success:
-        response = requests.post(URL, json=create_payload(current_id), headers=HEADERS)
-        # print(response.json())5
+        response = requests.post(BEATMAP_PAGE_URL, json=create_map_page_payload(min_sr, max_sr))
         try:
             response.raise_for_status()
             data = response.json()
-            if 'beatmap' in data:
-                process_map(data['beatmap'])
-                current_id += 1
+            beatmaps = data["beatmaps"]
+            while map_index < 5 and beatmaps:
+                i = random.choice(beatmaps) # randomized to reduce repetition
+                beatmaps.remove(i)
+
+                process_map(i)
+                map_index += 1
             else:
                 success = False
-                print(f"{Colors.ERROR}No beatmap data found for ID {current_id}. Exiting...{Colors.RESET}")
+                print(f"{Colors.ERROR}Exiting...{Colors.RESET}")
         except (requests.RequestException, ValueError) as e:
             success = False
             print(f"{Colors.ERROR}Error: {e}{Colors.RESET}")
