@@ -123,7 +123,7 @@ def main():
     success = True
     map_index = 0 # will go up to 5
 
-    # print(str(min_sr) + " " + str(max_sr))
+    print(str(min_sr) + " " + str(max_sr))
 
     while success:
         response = requests.post(BEATMAP_PAGE_URL, json=create_map_page_payload(min_sr, max_sr))
